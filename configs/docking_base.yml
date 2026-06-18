@@ -1,0 +1,341 @@
+# Run identity.
+seed: 42
+run_name: pocket-scVE-base
+
+# Experiment tracking.
+logger:
+  wandb: true
+  entity: dunnolab
+  project: flow-docking
+  name: ${run_name}
+  tags: []
+  group: null
+  run_id: null
+  resume: allow
+  mode: null # online, offline, disabled
+  dir: some/path/to/dir
+  log_config: true
+  finish_on_exit: true
+
+# Protein flexibility and sidechain torsion mode.
+protein:
+  flexibility: sidechain # rigid, sidechain, full
+  sidechain_tor_transform_type: diffusion # bridge, diffusion
+  use_bb_orientation_feats: true
+
+# Ligand flexibility.
+ligand:
+  torsions: true
+
+# Docking region and atom representation.
+pocket:
+  region: pocket # blind, pocket
+  radius: 5.0
+  buffer: 10.0
+  min_size: 1
+  all_atoms: true
+
+# Local atom selection for atom-level receptor work.
+nearby_atoms:
+  restrict_to_nearby: true
+  selection_mode: radius_based
+  radius: 4.0
+  min_atoms: 2
+
+# Noise scales. Protein mode is derived from protein.sidechain_tor_transform_type.
+sigma:
+  # Ligand diffusion sigmas.
+  tr_sigma_min: 0.1
+  tr_sigma_max: 15.0
+  rot_sigma_min: 0.03
+  rot_sigma_max: 1.55
+  tor_sigma_min: 0.0314
+  tor_sigma_max: 3.14
+
+  # Backbone is disabled because protein.flexibility is sidechain.
+  bb_tr_sigma: 1.8
+  bb_rot_sigma: 0.6
+
+  # Sidechain torsion diffusion uses bounds; the fixed bridge sigma is unused here.
+  sidechain_tor_sigma: 0.8
+  sidechain_tor_sigma_min: 0.0314
+  sidechain_tor_sigma_max: 3.14
+
+# Time sampling and bridge schedules.
+time:
+  sampling_alpha: 1.0
+  sampling_beta: 1.0
+  bb_tr_bridge_alpha: 2.0
+  bb_rot_bridge_alpha: 2.0
+  sc_tor_bridge_alpha: 2.0
+
+model:
+  # Entry point and checkpoint loading.
+  name: docking_model
+  checkpoint: null
+
+  # Protein language-model embeddings.
+  esm_embeddings_path: some/path/to/dir
+  esm_embeddings_model: null
+
+  # Confidence and affinity heads.
+  confidence_mode: false
+  num_confidence_outputs: 1
+  rmsd_classification_cutoff: []
+  confidence_head_type: contact_pool
+  confidence_contact_cutoff: 5.0
+  confidence_use_time_features: true
+  atom_lig_confidence: false
+  confidence_dropout: 0.0
+  confidence_no_batchnorm: false
+
+  # Graph radii, neighbor caps, and cross-edge behavior.
+  in_lig_edge_features: 5
+  max_radius: 6.0
+  ligand_max_radius: 6.0
+  receptor_radius: 15.0
+  c_alpha_max_neighbors: 24
+  atom_radius: 6.0
+  atom_max_neighbors: 12
+  cross_max_distance: 80.0
+  dynamic_max_cross: true
+
+  # Sigma, distance, and hidden representation sizes.
+  sigma_embed_type: sinusoidal
+  sigma_embed_dim: 32
+  embedding_scale: 1000.0
+  distance_embed_dim: 32
+  cross_distance_embed_dim: 32
+  ns: 60
+  nv: 15
+  num_conv_layers: 6
+  sh_lmax: 2
+  use_second_order_repr: false
+  reduce_pseudoscalars: false
+  differentiate_convolutions: true
+  tp_weights_layers: 2
+
+  # Normalization, activation, and regularization.
+  no_batch_norm: false
+  norm_type: layer_norm
+  norm_affine: true
+  dropout: 0.1
+  activation_func: silu
+  clamped_norm_min: 1.0e-6
+
+  # Tensor-product kernels and score scaling.
+  use_oeq_kernels: true
+  scale_by_sigma: true
+  smooth_edges: false
+  odd_parity: false
+  not_fixed_center_conv: false
+  no_aminoacid_identities: false
+
+  # Ligand transform and Fourier torsion heads.
+  lig_transform_type: diffusion # diffusion, flow
+  tor_fourier_enabled: false
+  tor_fourier_num_freqs: 6
+  sc_tor_fourier_enabled: false
+  sc_tor_fourier_num_freqs: 2
+  sc_tor_fourier_sigma_conditioning: false
+  sc_tor_fourier_gate_type: none
+  sc_tor_fourier_gate_hidden: 64
+  sc_tor_fourier_poly_degree: 3
+  sc_tor_fourier_joint_time: false
+
+  # Ligand-sidechain torsion coupling.
+  tor_sc_coupling_enabled: false
+  tor_sc_coupling_unary_enabled: false
+  tor_sc_coupling_pairwise_enabled: false
+  tor_sc_coupling_radius: 6.0
+  tor_sc_coupling_max_neighbors: 64
+
+transforms:
+  # Optional training sample down-weighting.
+  unbalanced:
+    match_max_rmsd: null
+
+  # Optional random backbone prior.
+  bb_prior:
+    bb_random_prior: false
+    bb_random_prior_noise: gaussian
+    bb_random_prior_ot: false
+    bb_random_prior_std: 0.5
+    bb_random_prior_ot_inf: false
+
+data:
+  # Dataset and paths.
+  task: docking
+  dataset: pdbbind
+  input_csv: null
+  preprocess_raw: false
+  cache_path: some/path/to/dir
+  split_train: some/path/to/dir
+  split_val: some/path/to/dir
+  affinity_csv: some/path/to/dir # not needed
+  cluster_file: null
+  require_ligand: true
+
+  # Raw preprocessing and conformer matching.
+  matching: true
+  matching_popsize: 15
+  matching_maxiter: 15
+  keep_original: false
+  remove_hs: false
+  num_conformers: 1
+  max_lig_size: null
+
+  # Dataset size and sampling.
+  limit_complexes: 0
+  complexes_per_cluster: 1
+  multiplicity: 1
+
+  # Dataloader behavior.
+  batch_size: 4
+  num_workers: 8
+  pin_memory: true
+  drop_last: false
+
+  # Validation-time sampling.
+  run_val_inference: true
+  num_inference_complexes: 500
+
+sampler:
+  # Sampling schedule and multiplicity.
+  inference_steps: 20
+  samples_per_complex: 10
+  k_samples_per_complex: 10
+  batch_size: 1
+
+  # Initial randomization and integrator behavior.
+  no_random: false
+  no_final_step_noise: true
+  ode: false
+  initial_noise_std_proportion: 1.0
+  reset_sidechain_ve_to_apo_before_randomize: true
+
+  # Runtime options.
+  precision: bf16-mixed
+
+  # Diffusion temperature controls.
+  diff_temp_sampling_tr: 1.0
+  diff_temp_sampling_rot: 1.0
+  diff_temp_sampling_tor: 1.0
+  diff_temp_psi_tr: 0.0
+  diff_temp_psi_rot: 0.0
+  diff_temp_psi_tor: 0.0
+  diff_temp_sigma_data_tr: 0.5
+  diff_temp_sigma_data_rot: 0.5
+  diff_temp_sigma_data_tor: 0.5
+
+  # Flow temperature controls.
+  flow_temp_scale_0_tr: 1.0
+  flow_temp_scale_0_rot: 1.0
+  flow_temp_scale_0_tor: 1.0
+  flow_temp_scale_1_tr: 1.0
+  flow_temp_scale_1_rot: 1.0
+  flow_temp_scale_1_tor: 1.0
+
+loss:
+  # Score-matching weights.
+  tr_weight: 1.0
+  rot_weight: 1.0
+  tor_weight: 1.0
+  bb_tr_weight: 1.0
+  bb_rot_weight: 1.0
+  sc_tor_weight: 1.0
+
+  # Confidence and affinity supervision.
+  confidence_weight: 0.1
+  affinity_weight: 0.1
+  confidence_target: pli_lddt
+  confidence_rmsd_threshold: 2.0
+  confidence_aux_rmsd_lt2_weight: 0.0
+  confidence_pos_weight: null
+  confidence_time_weighting: late_exp
+  confidence_time_power: 2.0
+  confidence_time_cutoff: 0.3
+
+  # Fourier and coupling regularization.
+  tor_fourier_reg_weight: 1.0e-4
+  sc_tor_fourier_reg_weight: 0.0
+  sc_tor_gate_reg_weight: 1.0e-5
+  tor_sc_coupling_reg_weight: 1.0e-5
+  use_new_pipeline: true
+
+training:
+  # Loop and runtime.
+  epochs: 600
+  device: auto
+  devices: 8
+  strategy: ddp
+  find_unused_parameters: true
+  precision: bf16-mixed
+  log_every: 25
+  val_inference_freq: 5
+
+  # EMA.
+  use_ema: true
+  ema_rate: 0.999
+
+  # Scheduler and early-stop metric metadata.
+  scheduler: plateau
+  scheduler_patience: 30
+  scheduler_gamma: 0.99
+  inference_earlystop_metric: valinf_rmsds_lt2
+  inference_earlystop_goal: max
+
+  # Gradient diagnostics.
+  check_unused_params: false
+  check_nan_grads: true
+  except_on_nan_grads: false
+  skip_nan_grad_updates: true
+
+  # Outputs and optimizer.
+  output_dir: /some/path/${run_name}
+  optimizer:
+    name: adam
+    lr: 0.001
+    weight_decay: 0.0
+    gradient_clip_norm: 1.0
+
+inference:
+  # Model and optional filtering checkpoints.
+  model_parameters: null
+  checkpoint: null
+  docking_model_dir: /some/path/${run_name}
+  docking_ckpt: best_inference_epoch_model_valinf_rmsds_lt2.pt
+  filtering_model_dir: null
+  filtering_ckpt: null
+  use_ema_weights: true
+
+  # Inputs, outputs, cached data, and optional ESM override.
+  input_csv: /some/path/some.csv
+  output_dir: /some/path/${run_name}
+  results_table_csv: /some/path/${run_name}.csv
+  cache_path: null
+  split_path: null
+  esm_embeddings_path: /some/path
+
+  # Dataset subset.
+  limit_complexes: null
+  complex_id: null
+
+  # Trajectory/export controls.
+  save_trajectory: false
+  export_trajectory_files: true
+  trajectory_max_ranks: null
+  posebusters_metrics: true # false
+  wandb_max_complex_examples: 24
+
+  # Runtime sampling overrides.
+  batch_size: 1
+  actual_steps: null
+  inference_steps: 20
+  samples_per_complex: 10
+  k_samples_per_complex: 10
+  ode: false
+
+  # Debug flags.
+  debug_backbone: false
+  debug_sidechains: false
