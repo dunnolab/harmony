@@ -5,8 +5,7 @@
   <a href="#" target="_blank">Pavel&nbsp;Strashnov</a> &emsp; <b>&middot;</b> &emsp;
   <a href="#" target="_blank">Vladislav&nbsp;Kurenkov</a>
   <br> <br>
-  <a href="#" target="_blank">Link&nbsp;to&nbsp;paper</a> &emsp; <b>&middot;</b> &emsp;
-  <a href="#" target="_blank">Project&nbsp;Page</a> &emsp;
+  <a href="#" target="_blank">Paper</a>
 </div>
 
 <br>
@@ -222,10 +221,9 @@ Source code is released under the Apache 2.0 license. Please see the <a href="ht
 ## Citation
 
 ```bibtex
-@article{harmony2026,
-  title   = {Harmonic Torsional Diffusion for Protein-Ligand Flexible Docking},
-  author  = {TODO},
-  journal = {TODO},
-  year    = {2026}
+@inproceedings{zhdanov2026harmonic,
+  title={Harmonic Torsional Diffusion for Protein-Ligand Flexible Docking},
+  author={Zhdanov, Maksim and Strashnov, Pavel and Kurenkov, Vladislav},
+  booktitle={The 2026 Workshop on Generative and Agentic AI for Biology}
 }
 ```
