@@ -5,7 +5,7 @@
   <a href="#" target="_blank">Pavel&nbsp;Strashnov</a> &emsp; <b>&middot;</b> &emsp;
   <a href="#" target="_blank">Vladislav&nbsp;Kurenkov</a>
   <br> <br>
-  <a href="#" target="_blank">Paper</a>
+  <a href="https://openreview.net/pdf?id=eEt6gFc1V5" target="_blank">Paper</a>
 </div>
 
 <br>
