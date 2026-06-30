@@ -9,7 +9,7 @@ from typing import Callable
 
 import torch
 
-from docking_model.metrics.docking import compute_valinf_metrics
+from docking_model.metrics.docking import compute_valinf_metrics, select_best_prediction_by_ligand_rmsd
 from docking_model.models.optim.ema import ExponentialMovingAverage
 from docking_model.runtime.distributed import any_rank_has, all_gather_object, is_distributed, is_main_process, unwrap_model
 from docking_model.runtime.checkpoint import save_checkpoint
@@ -215,14 +215,14 @@ class DockingEngine:
         if self.sampler is None:
             raise ValueError("Validation inference requires a SamplingEngine.")
 
-        results = []
         metric_sums: dict[str, float] = {}
         metric_counts: dict[str, int] = {}
+        result_count = 0
 
         for batch in loader:
             reference = batch.to("cpu")
             result = self.generate_validation_sample(reference)
-            results.append(result)
+            result_count += 1
 
             batch_metrics = {
                 f"valinf_{key}": value
@@ -233,10 +233,11 @@ class DockingEngine:
                     continue
                 metric_sums[key] = metric_sums.get(key, 0.0) + float(value)
                 metric_counts[key] = metric_counts.get(key, 0) + 1
+            del result
 
         if is_distributed():
             gathered = all_gather_object(
-                {"sums": metric_sums, "counts": metric_counts, "result_count": len(results)}
+                {"sums": metric_sums, "counts": metric_counts, "result_count": result_count}
             )
             metric_sums = {}
             metric_counts = {}
@@ -247,12 +248,10 @@ class DockingEngine:
                     metric_sums[key] = metric_sums.get(key, 0.0) + float(value)
                 for key, value in item["counts"].items():
                     metric_counts[key] = metric_counts.get(key, 0) + int(value)
-        else:
-            result_count = len(results)
 
         metrics = {key: metric_sums[key] / metric_counts[key] for key in metric_sums}
         metrics["valinf_complexes"] = float(result_count)
-        return results, metrics
+        return [], metrics
 
     def fit(
         self,
@@ -334,8 +333,26 @@ class DockingEngine:
             self.ema.restore(self.model.parameters())
 
     def generate_validation_sample(self, reference) -> SamplingResult:
-        k_samples = int(getattr(self.sampler.cfg, "k_samples_per_complex", 1)) if self.sampler is not None else 1
-        base_overrides = {"precision": "fp32"}
+        k_samples = 1
+        if self.sampler is not None:
+            k_samples = int(
+                getattr(
+                    self.sampler.cfg,
+                    "samples_per_complex",
+                    getattr(self.sampler.cfg, "k_samples_per_complex", 1),
+                )
+            )
+        # Training-time valinf is an oracle score-model check, not standalone confidence-ranked inference.
+        base_overrides = {
+            "precision": "fp32",
+            "samples_per_complex": 1,
+            "k_samples_per_complex": 1,
+            "batch_size": 1,
+            "save_trajectory": False,
+            "return_full_trajectory": False,
+            "run_confidence": False,
+            "rank_by_confidence": False,
+        }
         if k_samples <= 1:
             return self.sampler.generate(
                 data_list=[reference],
@@ -347,22 +364,25 @@ class DockingEngine:
         best_result: SamplingResult | None = None
         best_rmsd = float("inf")
 
-        for sample_idx in range(k_samples):
-            overrides = {**base_overrides, "samples_per_complex": 1, "k_samples_per_complex": 1}
-
+        for _ in range(k_samples):
             result = self.sampler.generate(
                 data_list=[copy.deepcopy(reference)],
                 model=self.raw_model,
                 device=self.device,
-                overrides=overrides,
+                overrides=base_overrides,
             )
 
-            metrics = compute_valinf_metrics(reference, result.predictions[:1])
-            rmsd = float(metrics.get("mean_rmsd", float("inf")))
+            prediction, rmsd = select_best_prediction_by_ligand_rmsd(reference, result.predictions)
+            if prediction is None:
+                continue
 
             if rmsd < best_rmsd:
                 best_rmsd = rmsd
-                best_result = result
+                best_result = SamplingResult(
+                    predictions=[prediction],
+                    confidences=None,
+                    details=dict(result.details or {}),
+                )
 
         if best_result is None:
             return self.sampler.generate(

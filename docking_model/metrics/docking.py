@@ -189,6 +189,48 @@ def compute_inference_sample_metrics(reference, predictions: list) -> dict[str, 
     return sample_metrics
 
 
+def select_best_prediction_by_ligand_rmsd(reference, predictions: list) -> tuple[object | None, float]:
+    """Select the oracle validation pose by aligned ligand RMSD."""
+
+    if not predictions:
+        return None, float("inf")
+
+    reference = first_graph(reference)
+    if "orig_pos" not in reference["ligand"] or "orig_holo_pos" not in reference["atom"]:
+        return predictions[0], float("inf")
+
+    filter_hs = as_numpy(reference["ligand"].x[:, 0] != 0).astype(bool)
+    true_ligand_pos = filter_ligand_pos(as_numpy(unwrap(reference["ligand"].orig_pos)), filter_hs)
+    true_atom_pos = as_numpy(unwrap(reference["atom"].orig_holo_pos))
+    nearby_atoms = nearby_atom_mask(reference, true_atom_pos.shape[0])
+    mol = getattr(reference, "mol", None)
+
+    best_prediction = None
+    best_rmsd = float("inf")
+
+    for prediction in predictions:
+        pred_atom_pos, pred_ligand_pos = prediction_positions(prediction)
+        pred_ligand_pos = filter_ligand_pos(pred_ligand_pos, filter_hs)
+
+        try:
+            R, t, _ = rigid_transform_kabsch_numpy(true_atom_pos[nearby_atoms], pred_atom_pos[nearby_atoms])
+        except Exception as exc:
+            logging.warning("Skipping a validation-inference oracle candidate because protein alignment failed: %s", exc)
+            continue
+
+        pred_ligand_pos = (R @ pred_ligand_pos.T).T + t
+        candidate_rmsd = float(
+            compute_ligand_rmsd(true_ligand_pos, pred_ligand_pos, name=graph_name(reference), mol=mol)
+        )
+        if candidate_rmsd < best_rmsd:
+            best_rmsd = candidate_rmsd
+            best_prediction = prediction
+
+    if best_prediction is None:
+        return predictions[0], float("inf")
+    return best_prediction, best_rmsd
+
+
 def compute_valinf_metrics(reference, predictions: list) -> dict[str, float]:
     """Compute validation-inference docking metrics for one complex."""
 

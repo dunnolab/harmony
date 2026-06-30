@@ -245,7 +245,12 @@ class DockingModel(nn.Module):
     def forward(self, data) -> dict:
         graphs = self.graph_builder(data)
         trunk = self.trunk(graphs)
-        confidence_outputs = self.confidence_heads(trunk, data)
+        skip_confidence_head = bool(getattr(data, "skip_confidence_head", False))
+        confidence_outputs = (
+            {}
+            if skip_confidence_head and not self.confidence_mode
+            else self.confidence_heads(trunk, data)
+        )
         if self.confidence_mode:
             return confidence_outputs
 
@@ -255,7 +260,8 @@ class DockingModel(nn.Module):
         )
         outputs.update(ligand_outputs)
         outputs.update(self.protein_heads(trunk, data, ligand_outputs=ligand_outputs))
-        outputs.update(confidence_outputs)
+        if confidence_outputs:
+            outputs.update(confidence_outputs)
         drop_private_outputs(outputs)
         return outputs
 

@@ -115,6 +115,7 @@ class FastSamplingBackend:
             flow_temp_scale_0=getattr(cfg, "flow_temp_scale_0", None),
             flow_temp_scale_1=getattr(cfg, "flow_temp_scale_1", None),
             precision=getattr(cfg, "precision", None),
+            run_confidence=bool(getattr(cfg, "run_confidence", True)),
         )
 
     def model_args(self, model) -> ModelSamplingArgs:
@@ -212,17 +213,25 @@ class SamplingEngine:
             cfg=cfg,
             device=device,
         )
+        rank_by_confidence = bool(getattr(cfg, "rank_by_confidence", True))
         if isinstance(sampled, SamplingResult):
-            return rank_sampling_result_by_confidence(sampled)
-        if len(sampled) == 4:
+            result = sampled
+        elif len(sampled) == 4:
             predictions, confidences, ligand_trajectory, atom_trajectory = sampled
-            return rank_sampling_result_by_confidence(SamplingResult(
+            result = SamplingResult(
                 predictions=predictions,
                 confidences=confidences,
                 details={"ligand_trajectory": ligand_trajectory, "atom_trajectory": atom_trajectory},
-            ))
-        predictions, confidences = sampled
-        return rank_sampling_result_by_confidence(SamplingResult(predictions=predictions, confidences=confidences))
+            )
+        else:
+            predictions, confidences = sampled
+            result = SamplingResult(predictions=predictions, confidences=confidences)
+
+        if rank_by_confidence:
+            return rank_sampling_result_by_confidence(result)
+        if not result.predictions:
+            raise ValueError("Sampling produced no predictions.")
+        return result
 
 
 def rank_sampling_result_by_confidence(result: SamplingResult) -> SamplingResult:
@@ -554,6 +563,7 @@ def sampling(
     flow_temp_scale_0: tuple | None = None,
     flow_temp_scale_1: tuple | None = None,
     precision: str | None = None,
+    run_confidence: bool = True,
 ):
     del visualization_list, sidechain_visualization_list, debug_backbone, debug_sidechain
     num_samples = len(data_list)
@@ -618,6 +628,8 @@ def sampling(
                 all_atoms=all_atoms,
                 device=device,
             )
+            if not run_confidence:
+                inputs.skip_confidence_head = True
 
             dt_tr = tr_schedule[t_idx] - tr_schedule[t_idx + 1] if t_idx < inference_steps - 1 else tr_schedule[t_idx]
             dt_rot = rot_schedule[t_idx] - rot_schedule[t_idx + 1] if t_idx < inference_steps - 1 else rot_schedule[t_idx]
@@ -816,17 +828,19 @@ def sampling(
             ligand_trajectory[sample_idx].append(graph["ligand"].pos.detach().cpu().numpy())
             atom_trajectory[sample_idx].append(graph["atom"].pos.detach().cpu().numpy())
 
-    confidence = run_confidence_model(
-        final_data_list=final_data_list,
-        confidence_model=confidence_model,
-        filtering_data_list=filtering_data_list,
-        filtering_model_args=filtering_model_args,
-        model_args=model_args,
-        sidechain_tor_bridge=sidechain_tor_bridge,
-        batch_size=batch_size,
-        all_atoms=all_atoms,
-        device=device,
-    )
+    confidence = None
+    if run_confidence:
+        confidence = run_confidence_model(
+            final_data_list=final_data_list,
+            confidence_model=confidence_model,
+            filtering_data_list=filtering_data_list,
+            filtering_model_args=filtering_model_args,
+            model_args=model_args,
+            sidechain_tor_bridge=sidechain_tor_bridge,
+            batch_size=batch_size,
+            all_atoms=all_atoms,
+            device=device,
+        )
     if return_full_trajectory:
         return final_data_list, confidence, np.asarray(ligand_trajectory), np.asarray(atom_trajectory)
     return final_data_list, confidence
