@@ -221,9 +221,10 @@ Source code is released under the Apache 2.0 license. Please see the <a href="ht
 ## Citation
 
 ```bibtex
-@inproceedings{zhdanov2026harmonic,
+@article{zhdanov2026harmonic,
   title={Harmonic Torsional Diffusion for Protein-Ligand Flexible Docking},
   author={Zhdanov, Maksim and Strashnov, Pavel and Kurenkov, Vladislav},
-  booktitle={The 2026 Workshop on Generative and Agentic AI for Biology}
+  journal={arXiv preprint arXiv:2608.20366},
+  year={2026}
 }
 ```
