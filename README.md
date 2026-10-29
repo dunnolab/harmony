@@ -1,11 +1,11 @@
-# Harmony: Harmonic Torsional Diffusion for Protein-Ligand Flexible Docking
+# Harmony: Harmonic Torsional Diffusion for Protein-Ligand Flexible Docking [NeurIPS 2026]
 
 <div align="center">
   <a href="#" target="_blank">Maksim&nbsp;Zhdanov</a> &emsp; <b>&middot;</b> &emsp;
   <a href="#" target="_blank">Pavel&nbsp;Strashnov</a> &emsp; <b>&middot;</b> &emsp;
   <a href="#" target="_blank">Vladislav&nbsp;Kurenkov</a>
   <br> <br>
-  <a href="https://openreview.net/pdf?id=eEt6gFc1V5" target="_blank">Paper</a>
+  <a href="https://arxiv.org/pdf/2608.20366" target="_blank">Paper</a>
 </div>
 
 <br>
